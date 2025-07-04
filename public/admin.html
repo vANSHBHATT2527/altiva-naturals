@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Orders - Altiva Naturals</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f5f5f0; margin: 0; padding: 0; }
+        .navbar { background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 100; }
+        .nav-container { max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 64px; }
+        .logo { font-size: 22px; font-weight: bold; color: #fff; background: #2c3e2d; padding: 8px 18px; border-radius: 6px; letter-spacing: 1px; box-shadow: 0 1px 4px rgba(44,62,45,0.08); }
+        .container { max-width: 1200px; margin: 40px auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); padding: 32px 24px; }
+        h1 { color: #2c3e2d; margin-bottom: 24px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 14px; }
+        th { background: #f8f9f5; color: #2c3e2d; }
+        tr:nth-child(even) { background: #f5f5f0; }
+        .cart-list { font-size: 13px; color: #444; }
+        .status-pending { color: #b8860b; font-weight: bold; }
+        .status-completed { color: #2c3e2d; font-weight: bold; }
+        .status-cancelled { color: #e74c3c; font-weight: bold; }
+        .login-form { max-width: 350px; margin: 40px auto 0 auto; background: #f8f9f5; border-radius: 8px; padding: 28px 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+        .login-form label { display: block; margin-bottom: 6px; color: #7a8471; font-weight: bold; }
+        .login-form input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; margin-bottom: 16px; }
+        .login-form button { width: 100%; background: #7a8471; color: #fff; border: none; padding: 12px; border-radius: 6px; font-weight: bold; font-size: 16px; cursor: pointer; }
+        .login-form button:hover { background: #6a7361; }
+        .error-msg { color: #e74c3c; margin-bottom: 12px; text-align: center; }
+        @media (max-width: 900px) { .container { padding: 8px; } table, th, td { font-size: 12px; } }
+        #ordersTable table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 15px; }
+        #ordersTable th, #ordersTable td { padding: 10px 8px; text-align: left; vertical-align: top; min-width: 90px; word-break: break-word; }
+        #ordersTable th { background: #f5f5f0; color: #2c3e2d; font-weight: bold; border-bottom: 2px solid #e0e0e0; }
+        #ordersTable tr:nth-child(even) { background: #f8f9f5; }
+        #ordersTable tr:nth-child(odd) { background: #fff; }
+        #ordersTable .order-status { display: inline-block; padding: 3px 12px; border-radius: 12px; font-size: 13px; font-weight: bold; }
+        #ordersTable .status-pending { background: #fffbe6; color: #b8860b; border: 1px solid #ffe58f; }
+        #ordersTable .status-completed { background: #e6ffed; color: #2c3e2d; border: 1px solid #b7eb8f; }
+        #ordersTable .status-cancelled { background: #fff1f0; color: #e74c3c; border: 1px solid #ffa39e; }
+        #ordersTable .order-items-list { margin: 0; padding-left: 18px; }
+        #ordersTable .order-items-list li { margin-bottom: 2px; }
+        #ordersTable .order-total { text-align: right; font-weight: bold; min-width: 80px; }
+        #ordersTable td, #ordersTable th { white-space: pre-line; }
+        #ordersTable { overflow-x: auto; }
+        @media (max-width: 1200px) { #ordersTable table { font-size: 13px; } #ordersTable th, #ordersTable td { min-width: 80px; } }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">ALTIVA NATURALS</div>
+            <div class="nav-actions">
+                <a href="index.html" class="nav-btn">HOME</a>
+                <a href="admin.html" class="nav-btn">ADMIN</a>
+            </div>
+            </div>
+    </nav>
+    <div class="container">
+        <h1>All Orders (Admin)</h1>
+        <div id="adminLoginSection">
+            <form class="login-form" id="adminLoginForm">
+                <div class="error-msg" id="loginError"></div>
+                <label for="adminEmail">Admin Email</label>
+                <input type="email" id="adminEmail" required autocomplete="username">
+                <label for="adminPassword">Password</label>
+                <input type="password" id="adminPassword" required autocomplete="current-password">
+                <button type="submit">Login as Admin</button>
+            </form>
+            </div>
+        <div id="ordersTable" style="display:none;"></div>
+    </div>
+    <script>
+    let adminToken = '';
+    let refreshInterval = null;
+
+    document.getElementById('adminLoginForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        document.getElementById('loginError').textContent = '';
+        const email = document.getElementById('adminEmail').value.trim();
+        const password = document.getElementById('adminPassword').value;
+        try {
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+                const data = await res.json();
+            if (res.ok && data.token) {
+                adminToken = data.token;
+                fetchOrders();
+                // Start auto-refresh
+                if (refreshInterval) clearInterval(refreshInterval);
+                refreshInterval = setInterval(fetchOrders, 10000); // every 10 seconds
+            } else {
+                document.getElementById('loginError').textContent = data.error || 'Login failed.';
+            }
+        } catch (err) {
+            document.getElementById('loginError').textContent = 'Login failed.';
+        }
+    });
+
+    async function fetchOrders() {
+        const res = await fetch('/api/orders?token=' + encodeURIComponent(adminToken));
+        const orders = await res.json();
+        if (!Array.isArray(orders)) {
+            document.getElementById('ordersTable').innerHTML = '<div style="color:#e74c3c;">Failed to fetch orders or not an admin.</div>';
+            document.getElementById('ordersTable').style.display = 'block';
+            return;
+        }
+        document.getElementById('adminLoginSection').style.display = 'none';
+        document.getElementById('ordersTable').style.display = 'block';
+        let html = `<div style="overflow-x:auto;"><button onclick=\"fetchOrders()\" style=\"margin-bottom:12px;padding:6px 18px;border-radius:4px;border:none;background:#7a8471;color:#fff;font-weight:bold;cursor:pointer;\">Refresh Orders</button>
+            <table><tr><th>Date</th><th>User</th><th>Phone</th><th>Email</th><th>Name</th><th>Address</th><th>Pincode</th><th>City</th><th>State</th><th>Payment</th><th>UPI</th><th>Cart</th><th class=\"order-total\">Total</th><th>Status</th></tr>`;
+        for (const order of orders) {
+            const date = order._id ? new Date(parseInt(order._id.substring(0,8), 16) * 1000).toLocaleString() : '';
+            let itemsHtml = '<ul class="order-items-list">';
+            if (Array.isArray(order.cart)) {
+                for (const item of order.cart) {
+                    itemsHtml += `<li>${item.name} <span style=\"color:#888;\">(x${item.quantity})</span></li>`;
+                }
+            }
+            itemsHtml += '</ul>';
+            let statusClass = 'status-pending';
+            if (order.status === 'completed') statusClass = 'status-completed';
+            if (order.status === 'cancelled') statusClass = 'status-cancelled';
+            html += `<tr>
+                <td>${date}</td>
+                <td>${order.user || ''}</td>
+                <td>${order.phone || ''}</td>
+                <td>${order.email || ''}</td>
+                <td>${order.name || ''}</td>
+                <td>${order.address || ''}</td>
+                <td>${order.pincode || ''}</td>
+                <td>${order.city || ''}</td>
+                <td>${order.state || ''}</td>
+                <td>${order.payment || ''}</td>
+                <td>${order.upi || ''}</td>
+                <td>${itemsHtml}</td>
+                <td class="order-total">₹${typeof order.total === 'number' && order.total > 0 ? order.total.toLocaleString() : '0'}</td>
+                <td><span class="order-status ${statusClass}">${order.status || 'pending'}</span></td>
+            </tr>`;
+        }
+        html += '</table></div>';
+        document.getElementById('ordersTable').innerHTML = html;
+    }
+    </script>
+</body>
+</html> 
